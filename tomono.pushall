@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+#final_output_file="merged_branches.txt"
+
+# Check if a parameter is provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 <input_file>"
+    exit 1
+fi
+
+input_file="$1"
+
+# Read branch names excluding duplicates
+unique_branches=$(sort "$input_file" | uniq)
+
+# Execute git lfs push for each branch
+for branch in $unique_branches; do
+    echo "Pushing LFS objects for branch: $branch"
+    git lfs push origin "$branch"
+done
+
+git push origin --all
+git push origin --tags

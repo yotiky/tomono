@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+# Note this is top-level in the script so it’s reading from the script’s stdin
+while IFS=$'\r'"$IFS" read -r repourl reponame repopath options; do
+    echo -e "Removing remote for repository: $reponame"
+
+    git remote remove "$reponame" 2>/dev/null || echo "warning: remote $reponame does not exist"
+done

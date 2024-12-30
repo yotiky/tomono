@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Color Definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
 set -euo pipefail ${DEBUGSH+-x}
 
 if ((BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4))); then
@@ -50,20 +56,37 @@ EOF
         ;;
 esac
 
+# Clear the file if it exists
+output_file="../merged_branches.txt"
+> "$output_file"  
+
 empty_tree="$(git hash-object -t tree /dev/null)"
 
 # Note this is top-level in the script so it’s reading from the script’s stdin
-while IFS=$'\r'"$IFS" read -r repourl reponame repopath; do
+while IFS=$'\r'"$IFS" read -r repourl reponame repopath options; do
+    echo -e "${GREEN}Starting processing for repository: $reponame${NC}"
+
     if [[ -z "$repopath" ]]; then
         repopath="$reponame"
     fi
 
-    git remote add "$reponame" "$repourl"
+    git remote add "$reponame" "$repourl" 2>/dev/null || echo "warning: remote $reponame already exists"
     git config --add "remote.$reponame.fetch" "+refs/tags/*:refs/tags/$reponame/*"
     git config "remote.$reponame.tagOpt" --no-tags
     git fetch --atomic "$reponame"
     
+    read -a options <<< "$options"
+    if [[ " ${options[@]} " =~ " lfs " ]]; then
+        echo -e "${GREEN}LFS install.${NC}"
+        git lfs install
+        git lfs fetch --all "$reponame"
+    fi
+
     git branch -r --no-color --list "$reponame/*" --format "%(refname:lstrip=3)" | while read -r branch ; do
+        if [[ ! "$branch" =~ ${MONOREPO_BRANCHES:=} ]]; then
+            continue
+        fi
+        
         git read-tree "$empty_tree"
         git read-tree --prefix "$repopath" "refs/remotes/$reponame/$branch"
         tree="$(git write-tree)"
@@ -88,10 +111,17 @@ while IFS=$'\r'"$IFS" read -r repourl reponame repopath; do
             -p "$move_commit" \
             -m "Merge $reponame/$branch")"
         git reset -q "$merge_commit"
+        
+         # Output the name of the merged branch to the file
+        echo "$branch" >> "$output_file"
     done
 done
 
-git checkout .
+git checkout . || {
+    git config --get lfs.repositoryformatversion >/dev/null && {
+        >&2 echo "repositories using LFS need to be marked in the config file"
+    }
+}
 
 # Copyright © 2020, 2022–2024 Hraban Luyat
 # 
